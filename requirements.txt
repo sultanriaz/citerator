@@ -6,13 +6,15 @@ pydantic-settings
 python-dotenv
 httpx
 
-# Retrieval
-qdrant-client
-fastembed            # sparse/BM25 vectors for hybrid search
+# Retrieval / vector store
+qdrant-client>=1.10
+fastembed>=0.4       # BM25 sparse vectors for hybrid search
 sentence-transformers
+numpy
 
 # Ingestion
-pymupdf
+pymupdf>=1.24.3      # note: AGPL-licensed; see docs/ingestion.md
+beautifulsoup4
 
 # LLM (install the one you use)
 openai
