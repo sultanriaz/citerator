@@ -1,7 +1,7 @@
 """Application settings for Citerator.
 
-Phase 3 appended retrieval/generation/API settings. Phase 4 appends document
-management settings. Existing Phase 2 and Phase 3 fields are preserved exactly.
+Phase 3 appends retrieval/generation/API settings. Existing Phase 2 fields are
+preserved exactly so ingestion and evaluation scripts continue to work.
 """
 
 from functools import lru_cache
@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     llm_provider: str = "openai"
     openai_api_key: str = ""
     anthropic_api_key: str = ""
-    gemini_api_key: str = ""
     llm_model: str = ""
+    gemini_api_key: str = ""  
 
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "citerator_chunks"
@@ -37,11 +37,6 @@ class Settings(BaseSettings):
     active_chunking_strategy: str = "structure"
     confidence_floor: float = 0.15
     cors_origins: list[str] = ["http://localhost:3000"]
-
-    documents_root: str = "data/raw"
-    documents_db_path: str = "data/processed/documents.sqlite"
-    max_upload_mb: int = 50
-    max_concurrent_ingest_jobs: int = 2
 
     @model_validator(mode="after")
     def _validate_confidence_bands(self) -> "Settings":
