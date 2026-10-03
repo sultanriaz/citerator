@@ -1,0 +1,25 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Secrets
+.env
+
+# Local data and vector store
+docker/qdrant_data/
+data/raw/*
+data/processed/*
+eval/results/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!eval/results/.gitkeep
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

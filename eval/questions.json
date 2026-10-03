@@ -1,0 +1,92 @@
+[
+  {
+    "id": "q01",
+    "question": "What customer due diligence is required before onboarding a customer?",
+    "category": "lookup",
+    "expected_behavior": "answer",
+    "ground_truth": "",
+    "source_doc": "",
+    "source_page": null
+  },
+  {
+    "id": "q02",
+    "question": "In what situations is enhanced due diligence required?",
+    "category": "lookup",
+    "expected_behavior": "answer",
+    "ground_truth": "",
+    "source_doc": "",
+    "source_page": null
+  },
+  {
+    "id": "q03",
+    "question": "How long must transaction records be kept?",
+    "category": "precise_fact",
+    "expected_behavior": "answer",
+    "ground_truth": "",
+    "source_doc": "",
+    "source_page": null
+  },
+  {
+    "id": "q04",
+    "question": "What information must accompany a wire transfer?",
+    "category": "precise_fact",
+    "expected_behavior": "answer",
+    "ground_truth": "",
+    "source_doc": "",
+    "source_page": null
+  },
+  {
+    "id": "q05",
+    "question": "Who counts as a beneficial owner of a legal entity?",
+    "category": "definition",
+    "expected_behavior": "answer",
+    "ground_truth": "",
+    "source_doc": "",
+    "source_page": null
+  },
+  {
+    "id": "q06",
+    "question": "How do the PEP requirements differ between the FATF guidance and the local regulator's rules?",
+    "category": "multi_doc",
+    "expected_behavior": "answer",
+    "ground_truth": "",
+    "source_doc": "",
+    "source_page": null
+  },
+  {
+    "id": "q07",
+    "question": "What does a suspicious transaction report need to contain?",
+    "category": "synthesis",
+    "expected_behavior": "answer",
+    "ground_truth": "",
+    "source_doc": "",
+    "source_page": null
+  },
+  {
+    "id": "q08",
+    "question": "Which obligations apply specifically to money service businesses?",
+    "category": "scoped",
+    "expected_behavior": "answer",
+    "ground_truth": "",
+    "source_doc": "",
+    "source_page": null
+  },
+  {
+    "id": "q09",
+    "question": "What is the AML fine for a bank in a country not covered by the indexed documents?",
+    "category": "out_of_corpus",
+    "expected_behavior": "refuse",
+    "ground_truth": "",
+    "source_doc": "",
+    "source_page": null
+  },
+  {
+    "id": "q10",
+    "question": "A customer just sent a large cash deposit. Do we have to report it?",
+    "category": "underspecified",
+    "expected_behavior": "clarify_or_escalate",
+    "ground_truth": "",
+    "source_doc": "",
+    "source_page": null
+  }
+]

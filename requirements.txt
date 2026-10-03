@@ -1,0 +1,34 @@
+# API
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-dotenv
+httpx
+
+# Retrieval
+qdrant-client
+fastembed            # sparse/BM25 vectors for hybrid search
+sentence-transformers
+
+# Ingestion
+pymupdf
+
+# LLM (install the one you use)
+openai
+# anthropic
+
+# Evaluation
+ragas
+pandas
+matplotlib
+
+# Observability
+structlog
+langfuse
+
+# Dashboard
+streamlit
+
+# Testing
+pytest
