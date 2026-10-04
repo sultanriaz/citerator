@@ -36,14 +36,25 @@ from citerator.ingestion.tokens import get_tokenizer
 
 logger = structlog.get_logger(__name__)
 
-_semaphore: asyncio.Semaphore | None = None
+_semaphores: dict[int, asyncio.Semaphore] = {}
 
 
 def _get_semaphore(settings: Settings) -> asyncio.Semaphore:
-    global _semaphore
-    if _semaphore is None:
-        _semaphore = asyncio.Semaphore(settings.max_concurrent_ingest_jobs)
-    return _semaphore
+    """Return a semaphore bound to the current event loop.
+
+    Each background ingestion task runs in its own thread via asyncio.run(),
+    which creates a fresh loop. An asyncio.Semaphore is bound to the loop it
+    was constructed in and cannot be reused across loops, so we keep one per
+    loop id and hand back the matching instance.
+    """
+
+    loop = asyncio.get_running_loop()
+    key = id(loop)
+    sem = _semaphores.get(key)
+    if sem is None:
+        sem = asyncio.Semaphore(settings.max_concurrent_ingest_jobs)
+        _semaphores[key] = sem
+    return sem
 
 
 def _processed_dir(settings: Settings) -> Path:

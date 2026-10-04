@@ -1,21 +1,24 @@
 """Document upload, job status, and registry endpoints.
 
 All routes require the existing X-API-Key dependency. Uploads are saved under
-``settings.documents_root`` and scheduled as asyncio background tasks -- the
-HTTP response returns immediately with job_ids the client can poll.
+``settings.documents_root`` and scheduled as background tasks -- the HTTP
+response returns immediately with job_ids the client can poll.
 
-Uploads run through ``ingest_service.process_file`` which is the same code path
-the CLI pipeline uses, so manifests stay interchangeable between API- and CLI-
-triggered ingestion.
+Background ingestion runs in a dedicated thread with its own event loop.
+``asyncio.create_task`` is not usable here: Starlette's test client tears down
+its request loop when the response completes, cancelling any task scheduled
+inside the endpoint. A thread owns its loop independently and survives.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import threading
 from pathlib import Path
 from typing import Any
 
+import structlog
 from fastapi import (
     APIRouter,
     Depends,
@@ -33,17 +36,24 @@ from citerator.config import Settings, get_settings
 from citerator.documents import ingest_service, jobs, registry
 from citerator.ingestion.store import make_client
 
+logger = structlog.get_logger(__name__)
+
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 _ALLOWED_EXTENSIONS = {".pdf", ".md", ".markdown", ".html", ".htm"}
 
-_background_tasks: set[asyncio.Task] = set()
-
 
 def _schedule(coro) -> None:
-    task = asyncio.create_task(coro)
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    """Run a coroutine in a daemon thread with its own event loop."""
+
+    def runner() -> None:
+        try:
+            asyncio.run(coro)
+        except Exception:
+            logger.exception("background_task_failed")
+
+    thread = threading.Thread(target=runner, daemon=True, name="citerator-bg")
+    thread.start()
 
 
 def _safe_filename(name: str) -> str:
@@ -81,7 +91,7 @@ async def _save_upload(file: UploadFile, dest: Path, max_bytes: int) -> int:
                 fh.close()
                 dest.unlink(missing_ok=True)
                 raise HTTPException(
-                    status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    status.HTTP_413_CONTENT_TOO_LARGE,
                     f"File exceeds {max_bytes} bytes",
                 )
             fh.write(chunk)
@@ -350,9 +360,7 @@ async def reindex_document_endpoint(
     job_id = jobs.create_job(
         row["source_file"], db_path=settings.documents_db_path
     )
-    _schedule(
-        ingest_service.process_file(target, settings, None, job_id, force=True)
-    )
+    _schedule(ingest_service.process_file(target, settings, None, job_id, force=True))
     return {"job_id": job_id, "doc_id": doc_id, "status": "queued"}
 
 

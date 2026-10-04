@@ -1,13 +1,16 @@
 """Application settings for Citerator.
 
-Phase 3 retrieval/generation/API, Phase 4 documents, Phase 5 evaluation,
-Phase 6 runtime settings + rate limit, Phase 7 observability + escalation.
+Phase 3 appended retrieval/generation/API settings, Phase 4 documents,
+Phase 5 evaluation, Phase 6 rate limiting.
 
-get_settings() returns the immutable base settings from .env / class
-defaults. Runtime overrides applied via the Settings screen live in
+``get_settings()`` returns the immutable base settings from .env / class
+defaults, lru_cached so repeated calls reuse the same instance. Runtime
+overrides applied via the Settings screen live in
 citerator/runtime_config/overrides.py and are merged on top by
-citerator/runtime_config/effective_settings.py, which is registered as a
-FastAPI dependency_override in citerator/api/app.py.
+citerator/runtime_config/effective_settings.py. That merger is registered as
+a FastAPI dependency_override in citerator/api/app.py, replacing get_settings
+for every route so live changes reach code that was written to depend on
+get_settings -- without editing those routes.
 """
 
 from functools import lru_cache
@@ -60,13 +63,6 @@ class Settings(BaseSettings):
     rate_limit_requests_per_minute: int = 120
     runtime_config_db_path: str = "data/processed/runtime_config.sqlite"
 
-    langfuse_public_key: str = ""
-    langfuse_secret_key: str = ""
-    langfuse_host: str = "https://cloud.langfuse.com"
-    enable_tracing: bool = True
-    escalation_webhook_url: str | None = None
-    observability_db_path: str = "data/processed/observability.sqlite"
-
     @model_validator(mode="after")
     def _validate_confidence_bands(self) -> "Settings":
         if self.confidence_floor >= self.confidence_threshold:
@@ -76,8 +72,13 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """Base settings: env-driven, immutable, cached. Runtime overrides are
+    applied on top by get_effective_settings(), not here."""
+
     return Settings()
 
 
 def base_settings() -> Settings:
+    """Backwards-compat alias for get_settings()."""
+
     return get_settings()

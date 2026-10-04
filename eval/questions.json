@@ -1,92 +1,200 @@
 [
   {
-    "id": "q01",
-    "question": "What customer due diligence is required before onboarding a customer?",
+    "question": "What is the customer due diligence threshold for one-off transactions?",
     "category": "lookup",
     "expected_behavior": "answer",
-    "ground_truth": "",
-    "source_doc": "",
-    "source_page": null
+    "ground_truth": "The standard customer due diligence threshold is USD 15,000 for one-off transactions.",
+    "source_doc": "cdd_policy.md",
+    "source_page": null,
+    "gold_section": "Section 1: Thresholds"
   },
   {
-    "id": "q02",
-    "question": "In what situations is enhanced due diligence required?",
+    "question": "What is the SAR filing deadline?",
     "category": "lookup",
     "expected_behavior": "answer",
-    "ground_truth": "",
-    "source_doc": "",
-    "source_page": null
+    "ground_truth": "A suspicious activity report must be filed within 30 calendar days of detection, extended to 60 days if the transaction is ongoing.",
+    "source_doc": "sar.md",
+    "source_page": null,
+    "gold_section": "Filing Deadlines"
   },
   {
-    "id": "q03",
-    "question": "How long must transaction records be kept?",
-    "category": "precise_fact",
+    "question": "How long must records be retained after a customer relationship ends?",
+    "category": "lookup",
     "expected_behavior": "answer",
-    "ground_truth": "",
-    "source_doc": "",
-    "source_page": null
+    "ground_truth": "Records must be retained for five years after the end of the customer relationship.",
+    "source_doc": "record_keeping_policy.md",
+    "source_page": null,
+    "gold_section": "Section 1: Retention Period"
   },
   {
-    "id": "q04",
-    "question": "What information must accompany a wire transfer?",
-    "category": "precise_fact",
+    "question": "What does enhanced due diligence require?",
+    "category": "lookup",
     "expected_behavior": "answer",
-    "ground_truth": "",
-    "source_doc": "",
-    "source_page": null
+    "ground_truth": "Enhanced due diligence requires verification of source of funds and source of wealth, senior management approval, and enhanced ongoing monitoring.",
+    "source_doc": "edd_policy.md",
+    "source_page": null,
+    "gold_section": "Section 2: Required Measures"
   },
   {
-    "id": "q05",
-    "question": "Who counts as a beneficial owner of a legal entity?",
-    "category": "definition",
+    "question": "Who is treated as a politically exposed person?",
+    "category": "lookup",
     "expected_behavior": "answer",
-    "ground_truth": "",
-    "source_doc": "",
-    "source_page": null
+    "ground_truth": "A PEP is an individual entrusted with prominent public functions, whether domestically, in a foreign country, or in an international organisation, plus their family members and close associates.",
+    "source_doc": "pep_screening_policy.md",
+    "source_page": null,
+    "gold_section": "Section 1: Definition"
   },
   {
-    "id": "q06",
-    "question": "How do the PEP requirements differ between the FATF guidance and the local regulator's rules?",
-    "category": "multi_doc",
+    "question": "How often must sanctions screening be performed?",
+    "category": "lookup",
     "expected_behavior": "answer",
-    "ground_truth": "",
-    "source_doc": "",
-    "source_page": null
+    "ground_truth": "Sanctions screening is performed at onboarding and on every transaction, with daily re-screening for high-risk customers and at least monthly for all others.",
+    "source_doc": "sanctions_screening_policy.md",
+    "source_page": null,
+    "gold_section": "Section 1: Screening Points"
   },
   {
-    "id": "q07",
-    "question": "What does a suspicious transaction report need to contain?",
-    "category": "synthesis",
+    "question": "If a customer is identified as a politically exposed person, what approval and record-keeping requirements apply?",
+    "category": "multi_document",
     "expected_behavior": "answer",
-    "ground_truth": "",
-    "source_doc": "",
-    "source_page": null
+    "ground_truth": "A PEP relationship requires senior management approval before it is established (PEP Screening Policy), and records must be retained for five years after the end of the relationship (Record Keeping Policy).",
+    "source_doc": "pep_screening_policy.md",
+    "source_page": null,
+    "gold_section": "Section 3: Approval"
   },
   {
-    "id": "q08",
-    "question": "Which obligations apply specifically to money service businesses?",
-    "category": "scoped",
+    "question": "What happens when sanctions screening returns a match, and how long must the related records be kept?",
+    "category": "multi_document",
     "expected_behavior": "answer",
-    "ground_truth": "",
-    "source_doc": "",
-    "source_page": null
+    "ground_truth": "On a match, the transaction is frozen pending investigation and a report is made to the supervisor within 24 hours. The related records are retained for five years after the end of the customer relationship.",
+    "source_doc": "sanctions_screening_policy.md",
+    "source_page": null,
+    "gold_section": "Section 3: Handling a Match"
   },
   {
-    "id": "q09",
-    "question": "What is the AML fine for a bank in a country not covered by the indexed documents?",
+    "question": "What due diligence is required for a single one-off transaction of USD 100,000?",
+    "category": "multi_document",
+    "expected_behavior": "answer",
+    "ground_truth": "A USD 100,000 one-off transaction exceeds both the standard CDD threshold (USD 15,000) and the EDD threshold (USD 50,000), so enhanced due diligence applies.",
+    "source_doc": "cdd_policy.md",
+    "source_page": null,
+    "gold_section": "Section 1: Thresholds"
+  },
+  {
+    "question": "What are the filing deadline and retention requirements for a suspicious activity report?",
+    "category": "multi_document",
+    "expected_behavior": "answer",
+    "ground_truth": "A SAR must be filed within 30 calendar days of detection (60 if the transaction is ongoing), and the related records are retained for five years.",
+    "source_doc": "sar.md",
+    "source_page": null,
+    "gold_section": "Filing Deadlines"
+  },
+  {
+    "question": "What are the tax implications of trading cryptocurrency in the United Kingdom?",
     "category": "out_of_corpus",
     "expected_behavior": "refuse",
-    "ground_truth": "",
-    "source_doc": "",
-    "source_page": null
+    "ground_truth": null,
+    "source_doc": null,
+    "source_page": null,
+    "gold_section": null
   },
   {
-    "id": "q10",
-    "question": "A customer just sent a large cash deposit. Do we have to report it?",
+    "question": "What is the maximum interest rate allowed on a consumer loan in the United States?",
+    "category": "out_of_corpus",
+    "expected_behavior": "refuse",
+    "ground_truth": null,
+    "source_doc": null,
+    "source_page": null,
+    "gold_section": null
+  },
+  {
+    "question": "How do I register a company in Delaware?",
+    "category": "out_of_corpus",
+    "expected_behavior": "refuse",
+    "ground_truth": null,
+    "source_doc": null,
+    "source_page": null,
+    "gold_section": null
+  },
+  {
+    "question": "What are the GDPR obligations for processing personal data?",
+    "category": "out_of_corpus",
+    "expected_behavior": "refuse",
+    "ground_truth": null,
+    "source_doc": null,
+    "source_page": null,
+    "gold_section": null
+  },
+  {
+    "question": "What is the capital of Australia?",
+    "category": "out_of_corpus",
+    "expected_behavior": "refuse",
+    "ground_truth": null,
+    "source_doc": null,
+    "source_page": null,
+    "gold_section": null
+  },
+  {
+    "question": "What is the recommended daily water intake for adults?",
+    "category": "out_of_corpus",
+    "expected_behavior": "refuse",
+    "ground_truth": null,
+    "source_doc": null,
+    "source_page": null,
+    "gold_section": null
+  },
+  {
+    "question": "Should I file a suspicious activity report for this customer?",
     "category": "underspecified",
     "expected_behavior": "clarify_or_escalate",
-    "ground_truth": "",
-    "source_doc": "",
-    "source_page": null
+    "ground_truth": null,
+    "source_doc": null,
+    "source_page": null,
+    "gold_section": null
+  },
+  {
+    "question": "Is this customer a politically exposed person?",
+    "category": "underspecified",
+    "expected_behavior": "clarify_or_escalate",
+    "ground_truth": null,
+    "source_doc": null,
+    "source_page": null,
+    "gold_section": null
+  },
+  {
+    "question": "How much due diligence is enough for this relationship?",
+    "category": "underspecified",
+    "expected_behavior": "clarify_or_escalate",
+    "ground_truth": null,
+    "source_doc": null,
+    "source_page": null,
+    "gold_section": null
+  },
+  {
+    "question": "What is the correct retention period for my records?",
+    "category": "underspecified",
+    "expected_behavior": "clarify_or_escalate",
+    "ground_truth": null,
+    "source_doc": null,
+    "source_page": null,
+    "gold_section": null
+  },
+  {
+    "question": "Do I need to escalate this transaction to compliance?",
+    "category": "underspecified",
+    "expected_behavior": "clarify_or_escalate",
+    "ground_truth": null,
+    "source_doc": null,
+    "source_page": null,
+    "gold_section": null
+  },
+  {
+    "question": "What should I do about this customer?",
+    "category": "underspecified",
+    "expected_behavior": "clarify_or_escalate",
+    "ground_truth": null,
+    "source_doc": null,
+    "source_page": null,
+    "gold_section": null
   }
 ]

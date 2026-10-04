@@ -1,0 +1,48 @@
+"""FastAPI app factory for Citerator.
+
+Existing (Phase 3-5) content is unchanged. Phase 6 adds, and only adds:
+
+  1. import settings_routes, RateLimitMiddleware, get_effective_settings
+  2. app.add_middleware(RateLimitMiddleware)
+  3. app.dependency_overrides[get_settings] = get_effective_settings
+  4. app.include_router(settings_routes.router)
+
+Line 3 is what makes every existing route that depends on get_settings see
+runtime overrides live, without edits to those route files.
+"""
+
+from __future__ import annotations
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from citerator.api import documents_routes, eval_routes, settings_routes
+from citerator.api.rate_limit import RateLimitMiddleware
+from citerator.api.routes import router
+from citerator.config import get_settings
+from citerator.runtime_config.effective_settings import get_effective_settings
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+
+    app = FastAPI(title="Citerator API", version="0.1.0")
+    app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    app.dependency_overrides[get_settings] = get_effective_settings
+
+    app.include_router(router)
+    app.include_router(documents_routes.router)
+    app.include_router(eval_routes.router)
+    app.include_router(settings_routes.router)
+    return app
+
+
+app = create_app()
