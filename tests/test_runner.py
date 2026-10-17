@@ -58,6 +58,25 @@ def _make_chunk(chunk_id: str, text: str, chunk_index: int) -> Chunk:
     )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_store_settings(monkeypatch, tmp_path_factory):
+    """Guard against store.get_settings() reaching the global default DB.
+
+    Any store call that omits db_path resolves through get_settings().
+    Patching it here to a tmp path keeps accidental global writes from
+    leaking between tests.
+    """
+    import citerator.evaluation.store as eval_store
+
+    tmp = tmp_path_factory.mktemp("store")
+    monkeypatch.setattr(
+        eval_store,
+        "get_settings",
+        lambda: type("S", (), {"eval_db_path": str(tmp / "eval.sqlite")})(),
+    )
+    yield
+
+
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     raw = tmp_path / "raw"

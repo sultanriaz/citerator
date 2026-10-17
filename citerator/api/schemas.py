@@ -8,6 +8,7 @@ class QueryRequest(BaseModel):
     question: str
     document_scope: list[str] | None = None
     jurisdiction: str | None = None
+    tenant_id: str | None = None
     show_retrieval_details: bool = False
 
 

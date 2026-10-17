@@ -8,6 +8,11 @@ processor from log_sink.
 Development vs. production is inferred from qdrant_url: localhost/127.0.0.1
 gets the coloured console renderer, anything else gets JSON. This avoids
 adding another Settings field just for a display flag.
+
+Note: structlog.stdlib.add_logger_name is intentionally NOT in the chain.
+It requires a stdlib logger object with a ``.name`` attribute, but
+``configure`` is wired to PrintLoggerFactory (which has no ``.name``).
+Dropping it keeps the level and event fields, which is everything we need.
 """
 
 from __future__ import annotations
@@ -43,7 +48,6 @@ def configure_logging(settings: Settings) -> None:
     shared: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
-        structlog.stdlib.add_logger_name,
         timestamper,
         tracing_processor,
     ]

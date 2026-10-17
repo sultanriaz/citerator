@@ -17,12 +17,12 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from citerator.api.deps import require_api_key
 from citerator.config import Settings, get_settings
 from citerator.runtime_config import overrides as overrides_store
-from citerator.runtime_config.effective_settings import get_effective_settings
+from citerator.runtime_config.effective_settings import get_effective_settings  # noqa: F401
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -49,6 +49,7 @@ class PipelineUpdate(BaseModel):
 
 
 class ModelsUpdate(BaseModel):
+    model_config = ConfigDict(extra="allow")
     llm_provider: str | None = None
     llm_model: str | None = None
     rerank_model: str | None = None
@@ -135,7 +136,7 @@ def _endpoint_catalog() -> list[dict[str, str]]:
 
 @router.get("/pipeline")
 def get_pipeline(
-    settings: Settings = Depends(get_effective_settings),
+    settings: Settings = Depends(get_settings),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     return _pipeline_view(settings, overrides_store.get_overrides())
@@ -144,7 +145,7 @@ def get_pipeline(
 @router.put("/pipeline")
 def put_pipeline(
     request: PipelineUpdate,
-    settings: Settings = Depends(get_effective_settings),
+    settings: Settings = Depends(get_settings),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     partial = request.model_dump(exclude_none=True)
@@ -186,7 +187,7 @@ def put_pipeline(
 @router.post("/pipeline/preview-threshold")
 def preview_threshold(
     request: ThresholdPreviewRequest,
-    settings: Settings = Depends(get_effective_settings),
+    settings: Settings = Depends(get_settings),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     from citerator.evaluation.questions import load_questions
@@ -256,7 +257,7 @@ def preview_threshold(
 
 @router.get("/models")
 def get_models(
-    settings: Settings = Depends(get_effective_settings),
+    settings: Settings = Depends(get_settings),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     provider = (settings.llm_provider or "").lower()
@@ -294,6 +295,12 @@ def put_models(
     partial = request.model_dump(exclude_none=True)
     if not partial:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No fields to update")
+    non_editable = [k for k in partial if k not in {"llm_provider", "llm_model", "rerank_model"}]
+    if non_editable:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"Fields are not overridable here: {sorted(non_editable)}",
+        )
     try:
         overrides_store.set_overrides(partial)
     except ValueError as exc:
@@ -329,7 +336,7 @@ def put_models(
 
 @router.get("/api")
 def get_api(
-    settings: Settings = Depends(get_effective_settings),
+    settings: Settings = Depends(get_settings),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
     return {

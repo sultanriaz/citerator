@@ -43,6 +43,9 @@ def collection_name(strategy: str, embedder_name: str) -> str:
 
 def payload_for(chunk: Chunk, embedding_model: str, ingested_at: datetime) -> dict:
     payload = chunk.model_dump(exclude={"embed_text"})
+    payload["tenant_id"] = getattr(chunk, "tenant_id", "global") or "global"
+    payload["owner_id"] = getattr(chunk, "owner_id", None)
+    payload["visibility"] = getattr(chunk, "visibility", "tenant") or "tenant"
     payload["embedding_model"] = embedding_model
     payload["ingested_at"] = ingested_at.isoformat()
     return payload
@@ -70,15 +73,15 @@ class ChunkStore:
                 raise RuntimeError(
                     f"Collection {self.collection!r} has no sparse vectors; re-create it to enable hybrid search."
                 )
-            return
-        self.client.create_collection(
-            collection_name=self.collection,
-            vectors_config={DENSE: models.VectorParams(size=self.dim, distance=models.Distance.COSINE)},
-            sparse_vectors_config=(
-                {SPARSE: models.SparseVectorParams(modifier=models.Modifier.IDF)} if self.sparse else None
-            ),
-        )
-        for field in ("doc_id", "source_file", "doc_type", "jurisdiction"):
+        else:
+            self.client.create_collection(
+                collection_name=self.collection,
+                vectors_config={DENSE: models.VectorParams(size=self.dim, distance=models.Distance.COSINE)},
+                sparse_vectors_config=(
+                    {SPARSE: models.SparseVectorParams(modifier=models.Modifier.IDF)} if self.sparse else None
+                ),
+            )
+        for field in ("doc_id", "source_file", "doc_type", "jurisdiction", "tenant_id", "owner_id", "visibility"):
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")  # local mode warns that indexes have no effect

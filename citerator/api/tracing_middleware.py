@@ -115,6 +115,20 @@ class TracingMiddleware:
         question = self._extract_question(body)
         trace_id = self._resolve_trace_id(scope)
 
+        tenant_id = "default_tenant"
+        user_id = "analyst_1"
+        for raw_name, raw_value in scope.get("headers", []):
+            if raw_name == b"x-tenant-id":
+                try:
+                    tenant_id = raw_value.decode("ascii").strip() or tenant_id
+                except Exception:
+                    pass
+            elif raw_name == b"x-user-id":
+                try:
+                    user_id = raw_value.decode("ascii").strip() or user_id
+                except Exception:
+                    pass
+
         from citerator.runtime_config.effective_settings import (
             get_effective_settings,
         )
@@ -124,12 +138,20 @@ class TracingMiddleware:
         except Exception:
             tracer = None
 
-        structlog.contextvars.bind_contextvars(trace_id=trace_id)
+        structlog.contextvars.bind_contextvars(
+            trace_id=trace_id, tenant_id=tenant_id, user_id=user_id
+        )
 
         if tracer is not None:
             try:
                 tracer.start_trace(
-                    trace_id, name="query", input={"question": question}
+                    trace_id,
+                    name="query",
+                    input={
+                        "question": question,
+                        "tenant_id": tenant_id,
+                        "user_id": user_id,
+                    },
                 )
             except Exception:
                 pass

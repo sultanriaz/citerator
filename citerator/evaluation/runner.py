@@ -1,12 +1,8 @@
-"""Run orchestration for the evaluation harness.
+"""Evaluation runner with db_path propagation.
 
-Reads the run row's per-run overrides, drives retrieval -> rerank ->
-confidence -> (optional) generation -> citations -> Ragas scoring per question,
-and writes both per-question results and aggregates back through the store.
-
-Never mutates global Settings: overrides are applied via model_copy. All
-errors -- at the question level and the run level -- are captured and made
-queryable rather than raised out of the background task.
+The runner receives a Settings object and passes its eval_db_path to every
+store call. Without this, tests that use a tmp path silently wrote to the
+global database and queries returned stale or missing rows.
 """
 
 from __future__ import annotations
@@ -41,7 +37,6 @@ logger = structlog.get_logger(__name__)
 
 def _apply_run_overrides(settings: Settings, run: dict[str, Any]) -> Settings:
     overrides: dict[str, Any] = {}
-
     if run.get("chunking_strategy"):
         overrides["active_chunking_strategy"] = run["chunking_strategy"]
     for key in (
@@ -52,7 +47,6 @@ def _apply_run_overrides(settings: Settings, run: dict[str, Any]) -> Settings:
     ):
         if run.get(key) is not None:
             overrides[key] = run[key]
-
     return settings.model_copy(update=overrides) if overrides else settings
 
 
@@ -130,15 +124,17 @@ async def run_evaluation(
 ) -> None:
     """Execute a full evaluation run. Never raises out of the caller."""
 
+    db_path = settings.eval_db_path
+
     try:
-        run = store.get_run(run_id)
+        run = store.get_run(run_id, db_path=db_path)
         if run is None:
             raise ValueError(f"Run {run_id} not found")
 
         run_settings = _apply_run_overrides(settings, run)
 
         questions = load_questions(Path(run_settings.eval_questions_path))
-        store.update_run(run_id, question_count=len(questions))
+        store.update_run(run_id, db_path=db_path, question_count=len(questions))
 
         scorer = scorer or RealRagasScorer(run_settings)
         reranker = reranker or CrossEncoderReranker(run_settings.rerank_model)
@@ -211,6 +207,7 @@ async def run_evaluation(
 
                 store.add_question_result(
                     run_id,
+                    db_path=db_path,
                     question=q.question,
                     category=q.category,
                     expected_behavior=expected,
@@ -237,6 +234,7 @@ async def run_evaluation(
                 )
                 store.add_question_result(
                     run_id,
+                    db_path=db_path,
                     question=q.question,
                     category=q.category,
                     expected_behavior=q.expected_behavior,
@@ -246,11 +244,11 @@ async def run_evaluation(
                     error=str(exc),
                 )
 
-            store.update_run(run_id, questions_completed=i + 1)
+            store.update_run(run_id, db_path=db_path, questions_completed=i + 1)
 
-        results = store.list_question_results(run_id)
+        results = store.list_question_results(run_id, db_path=db_path)
         aggregates = _compute_aggregates(results)
-        store.update_run(run_id, status="completed", **aggregates)
+        store.update_run(run_id, db_path=db_path, status="completed", **aggregates)
 
         logger.info("eval_run_completed", run_id=run_id, **{
             k: v for k, v in aggregates.items() if v is not None
@@ -259,6 +257,6 @@ async def run_evaluation(
     except Exception as exc:
         logger.warning("eval_run_failed", run_id=run_id, error=str(exc))
         try:
-            store.update_run(run_id, status="failed", error=str(exc))
+            store.update_run(run_id, db_path=db_path, status="failed", error=str(exc))
         except Exception:
             pass

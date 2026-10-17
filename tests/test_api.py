@@ -71,7 +71,8 @@ def test_health_returns_collection_counts(monkeypatch) -> None:
         def count(self, name: str):
             return FakeCount()
 
-    monkeypatch.setattr(routes, "make_client", lambda url: FakeClient())
+    import citerator.api.routes as routes_module
+    monkeypatch.setattr(routes_module, "make_client", lambda url: FakeClient())
     client = TestClient(app)
 
     response = client.get("/health")

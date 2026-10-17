@@ -35,12 +35,17 @@ CREATE TABLE IF NOT EXISTS documents (
     sparse_embedder   TEXT,
     status            TEXT NOT NULL,
     warnings          TEXT,
+    tenant_id         TEXT NOT NULL DEFAULT 'global',
+    owner_id          TEXT,
+    visibility        TEXT NOT NULL DEFAULT 'tenant',
     indexed_at        TEXT,
     updated_at        TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_documents_source_file ON documents(source_file);
 CREATE INDEX IF NOT EXISTS idx_documents_status      ON documents(status);
 CREATE INDEX IF NOT EXISTS idx_documents_doc_type    ON documents(doc_type);
+CREATE INDEX IF NOT EXISTS idx_documents_tenant      ON documents(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_documents_owner       ON documents(owner_id);
 """
 
 _SORTABLE = {
@@ -51,6 +56,9 @@ _SORTABLE = {
     "jurisdiction",
     "effective_date",
     "chunk_count",
+    "tenant_id",
+    "owner_id",
+    "visibility",
     "indexed_at",
     "updated_at",
 }
@@ -66,6 +74,15 @@ def _connect(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    # Automatic schema migration for existing databases
+    existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(documents)").fetchall()}
+    if "tenant_id" not in existing_cols:
+        conn.execute("ALTER TABLE documents ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'global'")
+    if "owner_id" not in existing_cols:
+        conn.execute("ALTER TABLE documents ADD COLUMN owner_id TEXT")
+    if "visibility" not in existing_cols:
+        conn.execute("ALTER TABLE documents ADD COLUMN visibility TEXT NOT NULL DEFAULT 'tenant'")
+    conn.commit()
     return conn
 
 
@@ -85,6 +102,35 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     return out
 
 
+_UPSERT_HOOKS: list = []
+
+
+def register_upsert_hook(fn) -> None:
+    """Register a callback invoked after every successful upsert.
+
+    Governance uses this to record document versions without touching
+    ingest_service. The callback receives the row dict that was written.
+    Failures in a hook are logged but do not fail the upsert -- preserving
+    the ingest caller's idempotency guarantee is more important than
+    guaranteeing that side effects always succeed.
+    """
+
+    _UPSERT_HOOKS.append(fn)
+
+
+def _fire_upsert_hooks(row: dict[str, Any]) -> None:
+    if not _UPSERT_HOOKS:
+        return
+    import structlog
+
+    log = structlog.get_logger(__name__)
+    for fn in _UPSERT_HOOKS:
+        try:
+            fn(row)
+        except Exception as exc:
+            log.warning("registry_upsert_hook_failed", error=str(exc))
+
+
 def upsert_document(row: dict[str, Any], *, db_path: str | None = None) -> None:
     payload = {
         "doc_id": row["doc_id"],
@@ -102,6 +148,9 @@ def upsert_document(row: dict[str, Any], *, db_path: str | None = None) -> None:
         "sparse_embedder": row.get("sparse_embedder"),
         "status": row.get("status", "indexed"),
         "warnings": json.dumps(row.get("warnings") or []),
+        "tenant_id": row.get("tenant_id") or "global",
+        "owner_id": row.get("owner_id"),
+        "visibility": row.get("visibility") or "tenant",
         "indexed_at": row.get("indexed_at") or _now(),
         "updated_at": _now(),
     }
@@ -113,11 +162,13 @@ def upsert_document(row: dict[str, Any], *, db_path: str | None = None) -> None:
             INSERT INTO documents (
                 doc_id, source_file, title, doc_type, jurisdiction, effective_date,
                 page_count, chunk_count, doc_hash, chunker, chunker_params,
-                embedder, sparse_embedder, status, warnings, indexed_at, updated_at
+                embedder, sparse_embedder, status, warnings, tenant_id, owner_id, visibility,
+                indexed_at, updated_at
             ) VALUES (
                 :doc_id, :source_file, :title, :doc_type, :jurisdiction, :effective_date,
                 :page_count, :chunk_count, :doc_hash, :chunker, :chunker_params,
-                :embedder, :sparse_embedder, :status, :warnings, :indexed_at, :updated_at
+                :embedder, :sparse_embedder, :status, :warnings, :tenant_id, :owner_id, :visibility,
+                :indexed_at, :updated_at
             )
             ON CONFLICT(doc_id) DO UPDATE SET
                 source_file     = excluded.source_file,
@@ -134,6 +185,9 @@ def upsert_document(row: dict[str, Any], *, db_path: str | None = None) -> None:
                 sparse_embedder = excluded.sparse_embedder,
                 status          = excluded.status,
                 warnings        = excluded.warnings,
+                tenant_id       = excluded.tenant_id,
+                owner_id        = excluded.owner_id,
+                visibility      = excluded.visibility,
                 indexed_at      = excluded.indexed_at,
                 updated_at      = excluded.updated_at
             """,
@@ -142,6 +196,8 @@ def upsert_document(row: dict[str, Any], *, db_path: str | None = None) -> None:
         conn.commit()
     finally:
         conn.close()
+
+    _fire_upsert_hooks(payload)
 
 
 def delete_document(doc_id: str, *, db_path: str | None = None) -> None:
@@ -170,6 +226,10 @@ def list_documents(
     doc_type: str | None = None,
     jurisdiction: str | None = None,
     status: str | None = None,
+    tenant_id: str | None = None,
+    user_id: str | None = None,
+    is_admin: bool = False,
+    include_global: bool = True,
     sort: str = "updated_at",
     order: str = "desc",
     limit: int | None = None,
@@ -197,6 +257,28 @@ def list_documents(
     if status:
         clauses.append("status = ?")
         params.append(status)
+
+    if tenant_id and tenant_id != "*":
+        if is_admin:
+            if include_global:
+                clauses.append("(tenant_id = ? OR tenant_id = 'global')")
+                params.append(tenant_id)
+            else:
+                clauses.append("tenant_id = ?")
+                params.append(tenant_id)
+        else:
+            if include_global:
+                clauses.append("(tenant_id = ? OR tenant_id = 'global')")
+                params.append(tenant_id)
+            else:
+                clauses.append("tenant_id = ?")
+                params.append(tenant_id)
+
+            if user_id:
+                clauses.append("(visibility IN ('tenant', 'public') OR owner_id = ?)")
+                params.append(user_id)
+            else:
+                clauses.append("visibility IN ('tenant', 'public')")
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     sql = f"SELECT * FROM documents {where} ORDER BY {sort} {order.upper()}"

@@ -1,16 +1,18 @@
 """In-process fixed-window rate limiter.
 
-Pure ASGI middleware, so it wraps every route without touching any existing
-route file. Keyed by the X-API-Key header when present, otherwise by client
-IP. The window is 60 seconds; the limit is read fresh on every request via
-get_effective_settings so a change on the Settings screen takes effect live.
+Pure ASGI middleware. The limit is read from effective settings lazily and
+cached briefly so per-request SQLite opens don't happen on every call. A
+change made through /settings/pipeline is picked up within the cache window.
 
-GET /health is exempt.
+The ``limit`` keyword is accepted at construction so citerator/api/app.py can
+pass the effective rate from Settings at startup. When omitted, the limit is
+resolved lazily from the runtime settings.
 
-Known limitations (documented in docs/settings.md): in-process only --
-counters reset on process restart and are not shared across multiple worker
-processes. A Redis-backed limiter is the fix if this is ever run with more
-than one worker.
+Keyed by the X-API-Key header when present, otherwise client IP. Window is
+60 seconds. GET /health is exempt.
+
+Known limitations in docs/settings.md: in-process only, resets on restart,
+not shared across workers.
 """
 
 from __future__ import annotations
@@ -21,17 +23,38 @@ from threading import Lock
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from citerator.runtime_config.effective_settings import get_effective_settings
-
 _WINDOW_SECONDS = 60
+_LIMIT_CACHE_SECONDS = 5
 _EXEMPT_PATHS = {"/health"}
 
 
 class RateLimitMiddleware:
-    def __init__(self, app: ASGIApp):
+    def __init__(self, app: ASGIApp, limit: int | None = None, **_ignored) -> None:
         self.app = app
         self._lock = Lock()
         self._counters: dict[str, tuple[int, int]] = {}
+        self._limit_override = limit
+        self._cached_limit: int = limit if limit is not None else 120
+        self._cached_at: float = 0.0 if limit is None else time.time()
+
+    def _current_limit(self) -> int:
+        if self._limit_override is not None:
+            return self._limit_override
+        now = time.time()
+        if now - self._cached_at < _LIMIT_CACHE_SECONDS:
+            return self._cached_limit
+        try:
+            from citerator.runtime_config.effective_settings import (
+                get_effective_settings,
+            )
+
+            self._cached_limit = int(
+                get_effective_settings().rate_limit_requests_per_minute
+            )
+        except Exception:
+            pass
+        self._cached_at = now
+        return self._cached_limit
 
     def _key(self, scope: Scope) -> str:
         for raw_name, raw_value in scope.get("headers", []):
@@ -71,11 +94,25 @@ class RateLimitMiddleware:
             await self.app(scope, receive, send)
             return
 
-        try:
-            limit = get_effective_settings().rate_limit_requests_per_minute
-        except Exception:
-            limit = 120
+        # Read the limit fresh on every request when no explicit override
+        # was given at construction time. Falls back to the cached value
+        # if the settings read fails. This is what makes a runtime
+        # rate_limit_requests_per_minute change take effect without a
+        # server restart.
+        if self._limit_override is not None:
+            limit = self._limit_override
+        else:
+            try:
+                from citerator.runtime_config.effective_settings import (
+                    get_effective_settings,
+                )
 
+                limit = int(
+                    get_effective_settings().rate_limit_requests_per_minute
+                )
+                self._cached_limit = limit
+            except Exception:
+                limit = self._current_limit()
         key = self._key(scope)
         allowed, retry_after = self._check(key, limit)
 

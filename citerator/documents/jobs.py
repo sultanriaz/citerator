@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     file_name   TEXT NOT NULL,
     status      TEXT NOT NULL,
     doc_id      TEXT,
+    tenant_id   TEXT NOT NULL DEFAULT 'global',
+    owner_id    TEXT,
     error       TEXT,
     warnings    TEXT,
     created_at  TEXT NOT NULL,
@@ -31,9 +33,10 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status     ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at);
+CREATE INDEX IF NOT EXISTS idx_jobs_tenant     ON jobs(tenant_id);
 """
 
-_UPDATABLE = {"status", "doc_id", "error", "warnings", "file_name"}
+_UPDATABLE = {"status", "doc_id", "error", "warnings", "file_name", "tenant_id", "owner_id"}
 
 
 def _db_path(explicit: str | None) -> str:
@@ -46,6 +49,12 @@ def _connect(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+    if "tenant_id" not in existing_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'global'")
+    if "owner_id" not in existing_cols:
+        conn.execute("ALTER TABLE jobs ADD COLUMN owner_id TEXT")
+    conn.commit()
     return conn
 
 
@@ -63,17 +72,23 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
     return out
 
 
-def create_job(file_name: str, *, db_path: str | None = None) -> str:
+def create_job(
+    file_name: str,
+    *,
+    tenant_id: str = "global",
+    owner_id: str | None = None,
+    db_path: str | None = None,
+) -> str:
     job_id = str(uuid.uuid4())
     now = _now()
     conn = _connect(_db_path(db_path))
     try:
         conn.execute(
             """
-            INSERT INTO jobs (job_id, file_name, status, created_at, updated_at)
-            VALUES (?, ?, 'queued', ?, ?)
+            INSERT INTO jobs (job_id, file_name, status, tenant_id, owner_id, created_at, updated_at)
+            VALUES (?, ?, 'queued', ?, ?, ?, ?)
             """,
-            (job_id, file_name, now, now),
+            (job_id, file_name, tenant_id, owner_id, now, now),
         )
         conn.commit()
     finally:
@@ -129,14 +144,21 @@ def list_jobs(
     *,
     limit: int = 50,
     status: str | None = None,
+    tenant_id: str | None = None,
+    is_admin: bool = False,
     db_path: str | None = None,
 ) -> list[dict[str, Any]]:
-    sql = "SELECT * FROM jobs"
+    clauses: list[str] = []
     params: list[Any] = []
     if status:
-        sql += " WHERE status = ?"
+        clauses.append("status = ?")
         params.append(status)
-    sql += " ORDER BY created_at DESC LIMIT ?"
+    if tenant_id and tenant_id != "*" and not is_admin:
+        clauses.append("(tenant_id = ? OR tenant_id = 'global')")
+        params.append(tenant_id)
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    sql = f"SELECT * FROM jobs {where} ORDER BY created_at DESC LIMIT ?"
     params.append(limit)
 
     conn = _connect(_db_path(db_path))
@@ -145,3 +167,4 @@ def list_jobs(
     finally:
         conn.close()
     return [_row_to_dict(row) for row in rows]
+

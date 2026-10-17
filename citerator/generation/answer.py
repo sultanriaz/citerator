@@ -68,17 +68,19 @@ def answer_question(
     reranker: Reranker | None = None,
     llm_client: LLMClient | None = None,
     show_retrieval_details: bool = False,
+    tenant: Any | None = None,
 ) -> AnswerResult:
     """Run retrieval, reranking, confidence scoring, generation, and citations."""
 
     total_start = time.perf_counter()
-    logger.info("query_start", question=question)
+    logger.info("query_start", question=question, tenant_id=getattr(tenant, "tenant_id", None))
 
     retrieve_start = time.perf_counter()
     candidates = search(
         question,
         settings,
         filters=filters,
+        tenant=tenant,
         client=client,
         embedder=embedder,
         sparse_embedder=sparse_embedder,
@@ -91,7 +93,7 @@ def answer_question(
     )
 
     rerank_start = time.perf_counter()
-    reranked = rerank(question, candidates, settings, reranker=reranker)
+    reranked = rerank(question, candidates, settings, reranker=reranker, tenant=tenant)
     rerank_ms = (time.perf_counter() - rerank_start) * 1000.0
     logger.info(
         "query_reranked",
@@ -146,7 +148,7 @@ def answer_question(
     generate_ms = (time.perf_counter() - generate_start) * 1000.0
     logger.info("query_generated", duration_ms=round(generate_ms, 2))
 
-    citations = parse_citations(response.text, reranked)
+    citations = parse_citations(response.text, reranked, tenant=tenant)
     logger.info("query_citations_verified", citations=len(citations))
 
     escalation_draft = None

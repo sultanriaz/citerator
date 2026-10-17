@@ -15,11 +15,10 @@ from citerator.observability import tracing
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("RUNTIME_CONFIG_DB_PATH", str(tmp_path / "rt.sqlite"))
-    from citerator.config import base_settings
-    base_settings.cache_clear()
+    
     tracing.reset_tracer_cache()
     yield
-    base_settings.cache_clear()
+    
     tracing.reset_tracer_cache()
 
 

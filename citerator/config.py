@@ -58,6 +58,32 @@ class Settings(BaseSettings):
     llm_price_per_million_output_tokens: float | None = None
 
     rate_limit_requests_per_minute: int = 120
+
+    governance_db_path: str = "data/processed/governance.sqlite"
+    audit_hmac_key: str = ""
+    audit_required: bool = True
+    audit_max_response_bytes: int = 1_000_000
+    document_default_classification: str = "internal"
+    document_default_retention_days: int | None = None
+    document_review_cycle_days: int = 365
+    erasure_max_chunks_per_run: int = 10_000
+
+    stream_enabled: bool = True
+    stream_heartbeat_seconds: int = 15
+
+    cache_enabled: bool = False
+    cache_backend: str = "memory"
+    cache_redis_url: str = "redis://localhost:6379/0"
+    cache_ttl_seconds: int = 3600
+    cache_max_entries: int = 1000
+    cache_similarity_threshold: float = 0.95
+    cache_embedding_model: str = ""
+
+    queue_backend: str = "inline"
+    queue_redis_url: str = "redis://localhost:6379/1"
+    queue_name: str = "citerator"
+    queue_job_timeout_seconds: int = 900
+    queue_result_ttl_seconds: int = 86400
     runtime_config_db_path: str = "data/processed/runtime_config.sqlite"
 
     langfuse_public_key: str = ""

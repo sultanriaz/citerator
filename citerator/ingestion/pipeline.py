@@ -55,6 +55,9 @@ class IngestConfig:
     price_per_million_tokens: float | None = None
     report_dir: Path = Path("eval/results")
     processed_dir: Path = Path("data/processed")
+    tenant_id: str = "global"
+    owner_id: str | None = None
+    visibility: str = "public"
 
 
 # --------------------------------------------------------------------------- manifest
@@ -158,6 +161,12 @@ def run_ingestion(cfg: IngestConfig, embedder=None, sparse=None, client=None) ->
                 continue
 
             doc = load_document(path, input_dir)
+            if cfg.tenant_id:
+                doc.tenant_id = cfg.tenant_id
+            if cfg.owner_id:
+                doc.owner_id = cfg.owner_id
+            if cfg.visibility:
+                doc.visibility = cfg.visibility
             report["warnings"] = list(doc.warnings)
             chunks = chunk_document(doc, chunker, tokenizer)
             report["chunks"] = len(chunks)
@@ -309,6 +318,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="USD per 1M embedding tokens (for the cost estimate; check current API pricing)")
     p.add_argument("--report-dir", default="eval/results")
     p.add_argument("--processed-dir", default="data/processed")
+    p.add_argument("--tenant-id", default="global", help="tenant identity for indexed documents (default: 'global')")
+    p.add_argument("--owner-id", default=None, help="document owner user identity")
+    p.add_argument("--visibility", choices=["tenant", "public", "private"], default="public", help="document visibility scope")
     p.add_argument("-v", "--verbose", action="store_true")
     return p
 
@@ -324,6 +336,7 @@ def main(argv: list[str] | None = None) -> int:
         force=args.force, dry_run=args.dry_run, prune=args.prune, use_cache=not args.no_cache,
         price_per_million_tokens=args.price_per_million_tokens,
         report_dir=Path(args.report_dir), processed_dir=Path(args.processed_dir),
+        tenant_id=args.tenant_id, owner_id=args.owner_id, visibility=args.visibility,
     )
     try:
         report = run_ingestion(cfg)

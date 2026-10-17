@@ -14,13 +14,13 @@ from citerator.evaluation import runner, store
 @pytest.fixture(autouse=True)
 def _isolate_settings_cache():
     from citerator.config import base_settings
-    from citerator.runtime_config import resolver
+    
 
-    base_settings.cache_clear()
-    resolver.invalidate()
+    
+    
     yield
-    base_settings.cache_clear()
-    resolver.invalidate()
+    
+    
 
 
 @pytest.fixture
@@ -48,7 +48,6 @@ def client(settings: Settings, monkeypatch) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_settings] = lambda: settings
     eval_routes._running_runs.clear()
-    eval_routes._background_tasks.clear()
     return TestClient(app)
 
 

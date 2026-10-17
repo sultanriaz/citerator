@@ -122,17 +122,19 @@ async def start_run_endpoint(
 def list_runs_endpoint(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
+    settings: Settings = Depends(get_settings),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    rows = store.list_runs(limit=limit, offset=offset)
+    rows = store.list_runs(limit=limit, offset=offset, db_path=settings.eval_db_path)
     return {"runs": rows, "count": len(rows), "limit": limit, "offset": offset}
 
 
 @router.get("/latest")
 def latest_endpoint(
+    settings: Settings = Depends(get_settings),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    recent = store.list_runs(limit=20, status="completed")
+    recent = store.list_runs(limit=20, status="completed", db_path=settings.eval_db_path)
     if not recent:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No completed runs yet")
 
@@ -173,10 +175,11 @@ def latest_endpoint(
 def compare_endpoint(
     a: str = Query(...),
     b: str = Query(...),
+    settings: Settings = Depends(get_settings),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    run_a = store.get_run(a)
-    run_b = store.get_run(b)
+    run_a = store.get_run(a, db_path=settings.eval_db_path)
+    run_b = store.get_run(b, db_path=settings.eval_db_path)
     if run_a is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"Run {a} not found")
     if run_b is None:
@@ -254,11 +257,13 @@ def get_run_endpoint(
     settings: Settings = Depends(get_settings),
     _: None = Depends(require_api_key),
 ) -> dict[str, Any]:
-    run = store.get_run(run_id)
+    run = store.get_run(run_id, db_path=settings.eval_db_path)
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found")
 
-    results = store.list_question_results(run_id, category=category)
+    results = store.list_question_results(
+        run_id, category=category, db_path=settings.eval_db_path
+    )
 
     resolved: list[dict[str, Any]] = []
     for r in results:

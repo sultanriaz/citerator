@@ -29,6 +29,9 @@ class Document(BaseModel):
     jurisdiction: str | None = None
     effective_date: str | None = None
     page_count: int | None = None
+    tenant_id: str = "global"  # 'global' for public standards, or specific tenant ID
+    owner_id: str | None = None  # user ID of the document owner/uploader
+    visibility: str = "tenant"  # 'tenant' | 'public' | 'private'
     blocks: list[Block] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
@@ -42,6 +45,9 @@ class Chunk(BaseModel):
     doc_type: str
     jurisdiction: str | None = None
     effective_date: str | None = None
+    tenant_id: str = "global"
+    owner_id: str | None = None
+    visibility: str = "tenant"
     section_path: list[str] = Field(default_factory=list)
     page_start: int | None = None
     page_end: int | None = None
@@ -54,3 +60,4 @@ class Chunk(BaseModel):
     chunk_index: int
     chunker: str
     chunker_params: dict = Field(default_factory=dict)
+

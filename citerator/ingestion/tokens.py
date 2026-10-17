@@ -66,7 +66,7 @@ class HFTokenizer:
 
 def get_tokenizer(model_name: str | None) -> Tokenizer:
     """Return an HF tokenizer for `model_name`, or fall back to the regex approximation."""
-    if not model_name:
+    if not model_name or model_name in {"hash", "fake", "none", "test"}:
         return RegexTokenizer()
     try:
         return HFTokenizer(model_name)

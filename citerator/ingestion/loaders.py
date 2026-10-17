@@ -358,6 +358,9 @@ def load_document(path: Path, root: Path) -> Document:
         jurisdiction=side.get("jurisdiction"),
         effective_date=str(side["effective_date"]) if side.get("effective_date") else None,
         page_count=page_count,
+        tenant_id=str(side.get("tenant_id") or "global"),
+        owner_id=side.get("owner_id"),
+        visibility=str(side.get("visibility") or "tenant"),
         blocks=blocks,
         warnings=warnings,
     )

@@ -49,9 +49,6 @@ def settings(tmp_path: Path, shared_client: QdrantClient, monkeypatch) -> Settin
     monkeypatch.setattr(
         documents_routes, "make_client", lambda url: shared_client
     )
-    monkeypatch.setattr(
-        settings_routes, "get_effective_settings", lambda: get_effective_settings()
-    )
     return s
 
 

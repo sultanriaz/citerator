@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Any, Protocol
 
 import structlog
 
@@ -58,8 +58,44 @@ def rerank(
     candidates: list[RetrievedChunk],
     settings: Settings,
     reranker: Reranker | None = None,
+    *,
+    tenant: Any | None = None,
 ) -> list[RetrievedChunk]:
     """Score, sort, and truncate candidates to ``settings.top_k_rerank``."""
+
+    if not candidates:
+        return []
+
+    # Tenant boundary authorization before reranking
+    if tenant is not None:
+        effective_tenant = getattr(tenant, "tenant_id", "global") or "global"
+        is_admin = getattr(tenant, "is_admin", False)
+        user_id = getattr(tenant, "user_id", None)
+        allowed = {effective_tenant, "global"} if effective_tenant != "*" else None
+
+        authorized_candidates: list[RetrievedChunk] = []
+        for c in candidates:
+            c_tenant = getattr(c, "tenant_id", "global") or "global"
+            c_vis = getattr(c, "visibility", "tenant") or "tenant"
+            c_owner = getattr(c, "owner_id", None)
+
+            if not is_admin and allowed and c_tenant not in allowed:
+                logger.warning(
+                    "rerank_dropped_cross_tenant_candidate",
+                    chunk_id=c.chunk_id,
+                    chunk_tenant=c_tenant,
+                    authorized_tenant=effective_tenant,
+                )
+                continue
+            if not is_admin and c_vis == "private" and c_owner != user_id:
+                logger.warning(
+                    "rerank_dropped_private_candidate",
+                    chunk_id=c.chunk_id,
+                    owner=c_owner,
+                )
+                continue
+            authorized_candidates.append(c)
+        candidates = authorized_candidates
 
     if not candidates:
         return []

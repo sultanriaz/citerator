@@ -1,23 +1,41 @@
 # Python
 venv/
 .venv/
+__pypackages__/
 __pycache__/
 *.pyc
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .ipynb_checkpoints/
+.coverage
+htmlcov/
 
 # Secrets
 .env
+.env.*
+!.env.example
+!**/.env.example
 
 # Local data and vector store
 docker/qdrant_data/
 data/raw/*
 data/processed/*
 eval/results/*
+staging/*.pdf
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !eval/results/.gitkeep
 
+# Frontend dependencies and build output
+node_modules/
+dist/
+coverage/
+.vite/
+*.tsbuildinfo
+
+# Local logs and editor state
+*.log
 # OS / editor
 .DS_Store
 Thumbs.db

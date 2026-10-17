@@ -147,6 +147,13 @@ async def process_file(
 
             jobs.update_job(job_id, db_path=db_path, status="parsing")
             doc = await asyncio.to_thread(load_document, resolved, root)
+            if meta:
+                if meta.get("tenant_id"):
+                    doc.tenant_id = str(meta["tenant_id"])
+                if meta.get("owner_id"):
+                    doc.owner_id = str(meta["owner_id"])
+                if meta.get("visibility"):
+                    doc.visibility = str(meta["visibility"])
 
             jobs.update_job(job_id, db_path=db_path, status="chunking", doc_id=doc.doc_id)
 
@@ -178,6 +185,9 @@ async def process_file(
                         "doc_type": doc.doc_type,
                         "jurisdiction": doc.jurisdiction,
                         "effective_date": doc.effective_date,
+                        "tenant_id": getattr(doc, "tenant_id", "global"),
+                        "owner_id": getattr(doc, "owner_id", None),
+                        "visibility": getattr(doc, "visibility", "tenant"),
                         "page_count": len(getattr(doc, "pages", []) or []),
                         "chunk_count": 0,
                         "doc_hash": doc.doc_hash,
@@ -237,6 +247,9 @@ async def process_file(
                     "doc_type": doc.doc_type,
                     "jurisdiction": doc.jurisdiction,
                     "effective_date": doc.effective_date,
+                    "tenant_id": getattr(doc, "tenant_id", "global"),
+                    "owner_id": getattr(doc, "owner_id", None),
+                    "visibility": getattr(doc, "visibility", "tenant"),
                     "page_count": len(getattr(doc, "pages", []) or []),
                     "chunk_count": len(chunks),
                     "doc_hash": doc.doc_hash,

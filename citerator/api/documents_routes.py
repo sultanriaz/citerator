@@ -44,7 +44,9 @@ _ALLOWED_EXTENSIONS = {".pdf", ".md", ".markdown", ".html", ".htm"}
 
 
 def _schedule(coro) -> None:
-    """Run a coroutine in a daemon thread with its own event loop."""
+    """Legacy in-process scheduling. Retained for direct callers that
+    prefer to bypass the queue; the route handlers now use
+    _enqueue_ingestion instead."""
 
     def runner() -> None:
         try:
@@ -54,6 +56,57 @@ def _schedule(coro) -> None:
 
     thread = threading.Thread(target=runner, daemon=True, name="citerator-bg")
     thread.start()
+
+
+def _enqueue_ingestion(
+    path,
+    settings,
+    meta,
+    job_id: str,
+    *,
+    force: bool = False,
+) -> None:
+    """Submit an ingestion job to the configured queue backend.
+
+    Inline backend runs in-process using the *actual* settings object so
+    per-request overrides (document roots, embedder choice) apply without
+    a serialization round trip. RQ backend serializes a small subset of
+    settings and lets the worker resolve the rest from its own env.
+    """
+
+    from citerator.queue import get_queue
+
+    queue = get_queue(settings)
+
+    if queue.name == "inline":
+        import asyncio as _asyncio
+        import threading as _threading
+
+        def runner() -> None:
+            try:
+                _asyncio.run(
+                    ingest_service.process_file(path, settings, meta, job_id)
+                )
+            except Exception:
+                logger.exception("inline_ingest_failed")
+
+        _threading.Thread(
+            target=runner, daemon=True, name="citerator-ingest"
+        ).start()
+        return
+
+    overrides = {
+        "llm_model": settings.llm_model,
+        "llm_provider": settings.llm_provider,
+        "active_chunking_strategy": settings.active_chunking_strategy,
+    }
+    queue.enqueue(
+        "citerator.queue.jobs.run_ingestion_job",
+        str(path),
+        job_id,
+        meta,
+        overrides,
+    )
 
 
 def _safe_filename(name: str) -> str:
@@ -112,8 +165,9 @@ async def upload_documents(
     doc_type: str | None = Form(None),
     jurisdiction: str | None = Form(None),
     effective_date: str | None = Form(None),
+    visibility: str | None = Form(None),
     settings: Settings = Depends(get_settings),
-    _: None = Depends(require_api_key),
+    tenant: Any = Depends(require_api_key),
 ) -> dict[str, Any]:
     if not files:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No files supplied")
@@ -122,10 +176,17 @@ async def upload_documents(
     root.mkdir(parents=True, exist_ok=True)
     max_bytes = settings.max_upload_mb * 1024 * 1024
 
+    tenant_id = getattr(tenant, "tenant_id", "global") or "global"
+    owner_id = getattr(tenant, "user_id", None)
+    vis = visibility or "tenant"
+
     meta = {
         "doc_type": doc_type,
         "jurisdiction": jurisdiction,
         "effective_date": effective_date,
+        "tenant_id": tenant_id,
+        "owner_id": owner_id,
+        "visibility": vis,
     }
 
     accepted: list[dict[str, str]] = []
@@ -140,9 +201,11 @@ async def upload_documents(
 
         job_id = jobs.create_job(
             dest.relative_to(root).as_posix(),
+            tenant_id=tenant_id,
+            owner_id=owner_id,
             db_path=settings.documents_db_path,
         )
-        _schedule(ingest_service.process_file(dest, settings, meta, job_id))
+        _enqueue_ingestion(dest, settings, meta, job_id)
         accepted.append({"file_name": name, "job_id": job_id})
 
     return {"accepted": accepted, "count": len(accepted)}
@@ -153,10 +216,14 @@ def list_jobs_endpoint(
     status: str | None = Query(None),
     limit: int = Query(50, ge=1, le=500),
     settings: Settings = Depends(get_settings),
-    _: None = Depends(require_api_key),
+    tenant: Any = Depends(require_api_key),
 ) -> list[dict[str, Any]]:
     return jobs.list_jobs(
-        limit=limit, status=status, db_path=settings.documents_db_path
+        limit=limit,
+        status=status,
+        tenant_id=getattr(tenant, "tenant_id", None),
+        is_admin=getattr(tenant, "is_admin", False),
+        db_path=settings.documents_db_path,
     )
 
 
@@ -245,8 +312,65 @@ async def retry_job_endpoint(
         status="queued",
         error=None,
     )
-    _schedule(ingest_service.process_file(target, settings, None, job_id))
+    _enqueue_ingestion(target, settings, None, job_id)
     return {"job_id": job_id, "status": "queued"}
+
+
+def authorize_document_access(
+    row: dict[str, Any],
+    tenant: Any,
+    action: str = "read",  # "read" | "modify" | "delete"
+) -> None:
+    """Enforce default-deny tenant boundary and document ownership."""
+    is_admin = getattr(tenant, "is_admin", False)
+    t_id = getattr(tenant, "tenant_id", "global") or "global"
+    u_id = getattr(tenant, "user_id", None)
+
+    doc_tenant = row.get("tenant_id") or "global"
+    doc_visibility = row.get("visibility") or "tenant"
+    doc_owner = row.get("owner_id")
+
+    # Global public documents are read-only for non-admin tenants
+    if doc_tenant == "global" and doc_visibility == "public":
+        if action == "read":
+            return
+        if not is_admin:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Only global administrators can modify or delete global public documents",
+            )
+        return
+
+    # Cross-tenant boundary check
+    if not is_admin and doc_tenant != t_id:
+        logger.warning(
+            "unauthorized_cross_tenant_document_access_denied",
+            action=action,
+            doc_id=row.get("doc_id"),
+            doc_tenant=doc_tenant,
+            caller_tenant=t_id,
+            user_id=u_id,
+        )
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Access denied: Document belongs to another tenant",
+        )
+
+    # Visibility check for reading private working drafts
+    if action == "read":
+        if not is_admin and doc_visibility == "private" and doc_owner and doc_owner != u_id:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Access denied: Private working draft belonging to another user",
+            )
+
+    # Modify / Delete checks
+    if action in {"modify", "delete"}:
+        if not is_admin and doc_owner and doc_owner != u_id:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                f"Only the document owner or an admin can {action} this document",
+            )
 
 
 @router.get("")
@@ -255,18 +379,34 @@ def list_documents_endpoint(
     doc_type: str | None = Query(None),
     jurisdiction: str | None = Query(None),
     status: str | None = Query(None),
+    tenant_id: str | None = Query(None),
     sort: str = Query("updated_at"),
     order: str = Query("desc"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     settings: Settings = Depends(get_settings),
-    _: None = Depends(require_api_key),
+    tenant: Any = Depends(require_api_key),
 ) -> dict[str, Any]:
+    t_id = getattr(tenant, "tenant_id", "global") or "global"
+    is_admin = getattr(tenant, "is_admin", False)
+
+    if tenant_id and not is_admin and tenant_id != t_id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"Cross-tenant document listing forbidden: cannot list documents for tenant '{tenant_id}'",
+        )
+
+    active_tenant = tenant_id if (is_admin and tenant_id) else t_id
+    user_id = getattr(tenant, "user_id", None)
+
     rows = registry.list_documents(
         search=search,
         doc_type=doc_type,
         jurisdiction=jurisdiction,
         status=status,
+        tenant_id=active_tenant,
+        user_id=user_id,
+        is_admin=is_admin,
         sort=sort,
         order=order,
         limit=limit,
@@ -280,8 +420,14 @@ def list_documents_endpoint(
 def get_document_chunks_endpoint(
     doc_id: str,
     settings: Settings = Depends(get_settings),
-    _: None = Depends(require_api_key),
+    tenant: Any = Depends(require_api_key),
 ) -> dict[str, Any]:
+    row = registry.get_document(doc_id, db_path=settings.documents_db_path)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
+
+    authorize_document_access(row, tenant, action="read")
+
     from citerator.ingestion.embedding import get_embedder
     from citerator.ingestion.store import collection_name
     from qdrant_client import models as qmodels
@@ -321,6 +467,9 @@ def get_document_chunks_endpoint(
                 "token_count": payload.get("token_count"),
                 "text": payload.get("text"),
                 "chunk_index": payload.get("chunk_index"),
+                "tenant_id": payload.get("tenant_id"),
+                "owner_id": payload.get("owner_id"),
+                "visibility": payload.get("visibility"),
             }
         )
 
@@ -332,11 +481,13 @@ def get_document_chunks_endpoint(
 def get_document_endpoint(
     doc_id: str,
     settings: Settings = Depends(get_settings),
-    _: None = Depends(require_api_key),
+    tenant: Any = Depends(require_api_key),
 ) -> dict[str, Any]:
     row = registry.get_document(doc_id, db_path=settings.documents_db_path)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
+
+    authorize_document_access(row, tenant, action="read")
     return row
 
 
@@ -344,11 +495,16 @@ def get_document_endpoint(
 async def reindex_document_endpoint(
     doc_id: str,
     settings: Settings = Depends(get_settings),
-    _: None = Depends(require_api_key),
+    tenant: Any = Depends(require_api_key),
 ) -> dict[str, str]:
     row = registry.get_document(doc_id, db_path=settings.documents_db_path)
     if row is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found")
+
+    authorize_document_access(row, tenant, action="modify")
+
+    doc_tenant = row.get("tenant_id") or "global"
+    doc_owner = row.get("owner_id")
 
     root = Path(settings.documents_root)
     target = root / row["source_file"]
@@ -358,9 +514,12 @@ async def reindex_document_endpoint(
         )
 
     job_id = jobs.create_job(
-        row["source_file"], db_path=settings.documents_db_path
+        row["source_file"],
+        tenant_id=doc_tenant,
+        owner_id=doc_owner,
+        db_path=settings.documents_db_path,
     )
-    _schedule(ingest_service.process_file(target, settings, None, job_id, force=True))
+    _schedule(ingest_service.process_file(target, settings, row, job_id, force=True))
     return {"job_id": job_id, "doc_id": doc_id, "status": "queued"}
 
 
@@ -368,7 +527,12 @@ async def reindex_document_endpoint(
 def delete_document_endpoint(
     doc_id: str,
     settings: Settings = Depends(get_settings),
-    _: None = Depends(require_api_key),
+    tenant: Any = Depends(require_api_key),
 ) -> Response:
+    row = registry.get_document(doc_id, db_path=settings.documents_db_path)
+    if row:
+        authorize_document_access(row, tenant, action="delete")
+
     ingest_service.delete_document(doc_id, settings)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+

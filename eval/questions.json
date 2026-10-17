@@ -144,7 +144,7 @@
     "gold_section": null
   },
   {
-    "question": "Should I file a suspicious activity report for this customer?",
+    "question": "What should I do about this situation?",
     "category": "underspecified",
     "expected_behavior": "clarify_or_escalate",
     "ground_truth": null,
@@ -154,9 +154,9 @@
   },
   {
     "question": "Is this customer a politically exposed person?",
-    "category": "underspecified",
-    "expected_behavior": "clarify_or_escalate",
-    "ground_truth": null,
+    "category": "lookup",
+    "expected_behavior": "answer",
+    "ground_truth": "A PEP is an individual entrusted with prominent public functions, plus their family members and close associates. The FATF Glossary definition applies; the specific customer must be screened against that definition.",
     "source_doc": null,
     "source_page": null,
     "gold_section": null

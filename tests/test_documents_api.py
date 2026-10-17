@@ -31,6 +31,7 @@ def settings(tmp_path: Path, monkeypatch) -> Settings:
         api_key="secret",
         cors_origins=["*"],
         max_upload_mb=1,
+        rate_limit_requests_per_minute=10000,
     )
 
     shared = QdrantClient(location=":memory:")
