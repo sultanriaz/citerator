@@ -251,21 +251,26 @@ class FakeLLMClient:
     """Deterministic offline LLM used by tests. Streams word-by-word so the
     SSE path can be exercised without a network."""
 
-    def __init__(self):
+    def __init__(self, response_text: str | None = None):
         self.invoked = False
         self.calls: list[tuple[str, str]] = []
+        self.response_text = response_text
 
     def complete(self, system: str, user: str) -> LLMResponse:
         import re
 
         self.invoked = True
         self.calls.append((system, user))
-        match = re.search(r"Question:\s*(.+)", user)
-        question = match.group(1).strip() if match else "the question"
+        if self.response_text is not None:
+            text = self.response_text
+        else:
+            match = re.search(r"Question:\s*(.+)", user)
+            question = match.group(1).strip() if match else "the question"
+            text = f"Echo: {question}\n\n[1]"
         return LLMResponse(
-            text=f"Echo: {question}\n\n[1]",
+            text=text,
             input_tokens=len(user.split()),
-            output_tokens=8,
+            output_tokens=len(text.split()),
         )
 
     def stream(self, system: str, user: str) -> Iterator[str]:

@@ -623,7 +623,7 @@ def test_rerank_and_citation_defense_in_depth(
 
     # B. Citation resolution authorization:
     # Answer citing [1] (Acme), [2] (FinTech), [3] (Global)
-    llm_answer = "Per [1] and [2], regulatory standards also cite [3]."
+    llm_answer = "Acme customer threshold is 10k [1]. Unauthorized reference [2]. International FATF threshold guidelines apply [3]."
     candidates_for_citations = [chunk_acme, chunk_fintech, chunk_global]
 
     acme_tenant = TenantContext(

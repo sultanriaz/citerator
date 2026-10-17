@@ -76,3 +76,65 @@ def test_low_confidence_generates_and_sets_escalation(monkeypatch) -> None:
 
     assert result.state == "low_confidence"
     assert result.escalation_draft is not None
+
+
+def test_insufficient_evidence_provides_fallback_and_zero_citations(monkeypatch) -> None:
+    # Insufficient confidence: low score candidate below floor
+    chunk = _chunk("c_low", "Unrelated noise", rerank_score=-10.0)
+    fake_llm = FakeLLMClient()
+
+    monkeypatch.setattr(answer_module, "search", lambda *args, **kwargs: [chunk])
+    monkeypatch.setattr(answer_module, "rerank", lambda *args, **kwargs: [chunk])
+
+    result = answer_module.answer_question("What is the tax rate?", _settings(), llm_client=fake_llm)
+
+    assert result.state == "insufficient"
+    assert result.answer is None
+    assert result.citations == [], "Must have zero fabricated citations on insufficient evidence"
+    assert len(result.related_passages) == 1
+    assert result.escalation_draft is not None
+    assert "Insufficient confidence to answer automatically" in result.escalation_draft["suggested_note"]
+    assert fake_llm.invoked is False, "LLM must never be called on insufficient evidence"
+
+
+def test_grounded_answer_includes_verified_citations(monkeypatch) -> None:
+    chunk = _chunk(
+        "c1",
+        "Customer due diligence must be conducted for transactions exceeding $10,000.",
+        rerank_score=3.5,
+    )
+    fake_llm = FakeLLMClient(
+        response_text="Customer due diligence is required for transactions exceeding $10,000 [1]."
+    )
+
+    monkeypatch.setattr(answer_module, "search", lambda *args, **kwargs: [chunk])
+    monkeypatch.setattr(answer_module, "rerank", lambda *args, **kwargs: [chunk])
+
+    result = answer_module.answer_question("What is the CDD threshold?", _settings(), llm_client=fake_llm)
+
+    assert result.state == "confident"
+    assert len(result.citations) == 1
+    assert result.citations[0].chunk_id == "c1"
+    assert result.citations[0].support_score is not None
+    assert result.citations[0].support_score >= 0.5
+
+
+def test_hallucinated_citation_in_llm_response_is_stripped(monkeypatch) -> None:
+    chunk = _chunk(
+        "c1",
+        "Staff must attend annual AML compliance training.",
+        rerank_score=3.5,
+    )
+    # LLM hallucinates a claim completely unsupported by the chunk
+    fake_llm = FakeLLMClient(
+        response_text="Willful non-compliance leads to 20 years in federal prison [1]."
+    )
+
+    monkeypatch.setattr(answer_module, "search", lambda *args, **kwargs: [chunk])
+    monkeypatch.setattr(answer_module, "rerank", lambda *args, **kwargs: [chunk])
+
+    result = answer_module.answer_question("What is the training requirement?", _settings(), llm_client=fake_llm)
+
+    assert result.state == "confident"
+    # The citation marker exists in LLM text, but since chunk does not support the claim, it is stripped
+    assert len(result.citations) == 0, "Hallucinated citation was not stripped!"
